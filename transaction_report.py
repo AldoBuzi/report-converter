@@ -195,7 +195,7 @@ def generate_excel_bytes(df, total_val=None, search_criteria=""):
         data_start = start_row + 2
         data_end = start_row + len(df) + 1
 
-        sum_formula = f"=SUM({amount_col_letter}{data_start}:{amount_col_letter})"
+        sum_formula = f"=SUM({amount_col_letter}:{amount_col_letter})"
 
         # Put formula in header box (right column)
         custom_format = '"L " #,##0.00'  # displays: L 71.40
