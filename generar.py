@@ -3,6 +3,35 @@ from decimal import Decimal, ROUND_HALF_UP
 import re
 import streamlit as st
 import io
+
+
+
+def find_exact_sum(target, available_values):
+    # Ensure target is an integer
+    target = int(target)
+    
+    # dp[i] will store a dictionary of how many times each value is used to reach the sum 'i'
+    # We initialize it with None, except for 0, which requires an empty dictionary.
+    dp = [None] * (target + 1)
+    dp[0] = {}
+
+    for i in range(1, target + 1):
+        for v in available_values:
+            # Check if we can use this value (v) to reach the current sum (i)
+            if i - v >= 0 and dp[i - v] is not None:
+                
+                # Copy the combination used to reach the previous step
+                current_combo = dp[i - v].copy()
+                # Add the current value to the count
+                current_combo[v] = current_combo.get(v, 0) + 1
+                
+                # If we haven't found a way to reach 'i' yet, or if this new way uses fewer total numbers, save it
+                if dp[i] is None or sum(current_combo.values()) < sum(dp[i].values()):
+                    dp[i] = current_combo
+
+    return dp[target]
+
+
 def normalize_val(val):
     if pd.isna(val) or val == "":
         return ""
@@ -46,8 +75,12 @@ def process_file(file):
 
 
     result = pd.merge(counts, mapping_lookup, on='Valor', how='left')
+    sum_empty = result.loc[result['Codigo'].isna(), 'Valor'].sum()
     result['Codigo'] = result['Codigo'].fillna('-')
+    list_of_values = result.loc[result['Codigo'] != '-', 'Valor']
     result = result[['Valor', 'Codigo', 'Recuento']]
+    
+    solution = find_exact_sum(sum_empty, list_of_values)
 
     #############
     valor_numeric = pd.to_numeric(result['Valor'], errors='coerce').fillna(0)
@@ -62,9 +95,21 @@ def process_file(file):
         'Codigo': [''],       # Empty string for other columns
         'Recuento': ['']
     })
+    
+    sum_new_row = pd.DataFrame({
+        'Valor': [f"TOTAL Sin Codigo:"], 
+        'Codigo': [f"{sum_empty}"],       # Empty string for other columns
+        'Recuento': ['']
+    })
 
     #Append the row to the original DataFrame
+    # 'ignore_index=True' ensures the row numbers continue perfectly from the old data
     result = pd.concat([result, new_row], ignore_index=True)
+    result = pd.concat([result, sum_new_row], ignore_index=True)
+    
+    new_rows = pd.DataFrame(list(solution.items()), columns=['Codigo', 'Recuento'])
+
+    result = pd.concat([result, new_rows], ignore_index=True)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
