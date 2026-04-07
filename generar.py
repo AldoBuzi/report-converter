@@ -7,65 +7,65 @@ import io
 
 
 def find_exact_sum(target, available_values):
-    # Safely convert the target to an integer
     target = int(float(target))
     
-    # Safely clean and convert available values
+    # Safely clean and sort values
     clean_values = set()
     for v in available_values:
         try:
-            # Convert to float first (to handle strings like "5.0"), then to int
             num = int(float(v))
             if num > 0:
                 clean_values.add(num)
         except (ValueError, TypeError):
-            # If the value is text, NaN, or completely invalid, just skip it
             continue
             
-    # Sort descending: trying the biggest chunks first is much faster
-    available_values = sorted(clean_values, reverse=True)
+    if not clean_values:
+        return None
+        
+    # Sort smallest to largest
+    clean_values = sorted(list(clean_values))
+    max_val = clean_values[-1]
     
-    best_solution = None
-    min_coins = float('inf')
-
-    def backtrack(remaining, current_index, current_combo, current_coin_count):
-        nonlocal best_solution, min_coins
+    # 1. THE GREEDY BULK
+    # Leave a safe buffer for DP to calculate the exact perfect change.
+    # 100 times your largest value is mathematically safe.
+    buffer_size = max_val * 100 
+    greedy_counts = {}
+    
+    if target > buffer_size:
+        # Calculate how much we need to chunk off
+        bulk_amount = target - buffer_size
         
-        # If we hit exactly 0, we found a valid combination
-        if remaining == 0:
-            if current_coin_count < min_coins:
-                min_coins = current_coin_count
-                best_solution = current_combo.copy()
-            return
+        # Use the largest number as many times as possible for the bulk
+        count = bulk_amount // max_val
+        greedy_counts[max_val] = count
         
-        # If we run out of values to try, stop
-        if current_index >= len(available_values):
-            return
+        # Shrink the target down to just the buffer
+        target -= (count * max_val)
         
-        val = available_values[current_index]
+    # 2. THE DP REMAINDER
+    # Now we run the perfect memory-heavy DP algorithm, but ONLY on the tiny remainder
+    dp = [None] * (target + 1)
+    dp[0] = {}
+    
+    for i in range(1, target + 1):
+        for v in clean_values:
+            if i - v >= 0 and dp[i - v] is not None:
+                current_combo = dp[i - v].copy()
+                current_combo[v] = current_combo.get(v, 0) + 1
+                
+                if dp[i] is None or sum(current_combo.values()) < sum(dp[i].values()):
+                    dp[i] = current_combo
+                    
+    # 3. COMBINE RESULTS
+    if dp[target] is None:
+        return None # It is mathematically impossible with these numbers
         
-        # MATHEMATICAL PRUNING
-        if current_coin_count + (remaining // val) >= min_coins:
-            return
-
-        # Try using the maximum possible amount of the current value, down to 0
-        max_amount = remaining // val
-        for count in range(max_amount, -1, -1):
-            if count > 0:
-                current_combo[val] = count
-            else:
-                if val in current_combo:
-                    del current_combo[val]
-            
-            backtrack(remaining - (count * val), current_index + 1, current_combo, current_coin_count + count)
-            
-            if val in current_combo:
-                del current_combo[val]
-
-    # Start the calculation
-    backtrack(target, 0, {}, 0)
-    return best_solution
-
+    final_solution = dp[target]
+    for val, count in greedy_counts.items():
+        final_solution[val] = final_solution.get(val, 0) + count
+        
+    return final_solution
 
 def normalize_val(val):
     if pd.isna(val) or val == "":
@@ -110,7 +110,7 @@ def process_file(file):
 
 
     result = pd.merge(counts, mapping_lookup, on='Valor', how='left')
-    sum_empty = result.loc[result['Codigo'].isna(), 'Valor'].sum()
+    sum_empty = result.loc[result['Codigo'].isna(), 'Valor'].astype(int).sum()
     result['Codigo'] = result['Codigo'].fillna('-')
     list_of_values = result.loc[result['Codigo'] != '-', 'Valor']
     result = result[['Valor', 'Codigo', 'Recuento']]
@@ -143,7 +143,6 @@ def process_file(file):
     result = pd.concat([result, sum_new_row], ignore_index=True)
     
     new_rows = pd.DataFrame(list(solution.items()), columns=['Codigo', 'Recuento'])
-
     result = pd.concat([result, new_rows], ignore_index=True)
 
     output = io.BytesIO()
