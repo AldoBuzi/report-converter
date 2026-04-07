@@ -6,45 +6,41 @@ import io
 
 
 
-def find_exact_sum(target, available_values):
+def find_exact_sum(target, available_values, list_of_codes):
     target = int(float(target))
     
-    # Safely clean and sort values
-    clean_values = set()
-    for v in available_values:
+    # 1. MAP VALUES TO CODES
+    # This dictionary will store {10: 'CODE_A', 5: 'CODE_B'}
+    value_to_code = {}
+    
+    # zip() lets us loop through both lists at the exact same time
+    for v, code in zip(available_values, list_of_codes):
         try:
             num = int(float(v))
-            if num > 0:
-                clean_values.add(num)
+            # If the number is valid and we haven't saved a code for it yet
+            if num > 0 and num not in value_to_code:
+                value_to_code[num] = code
         except (ValueError, TypeError):
             continue
             
-    if not clean_values:
+    if not value_to_code:
         return None
         
-    # Sort smallest to largest
-    clean_values = sorted(list(clean_values))
+    # Sort smallest to largest using our clean, valid numbers
+    clean_values = sorted(list(value_to_code.keys()))
     max_val = clean_values[-1]
     
-    # 1. THE GREEDY BULK
-    # Leave a safe buffer for DP to calculate the exact perfect change.
-    # 100 times your largest value is mathematically safe.
+    # 2. THE GREEDY BULK
     buffer_size = max_val * 100 
     greedy_counts = {}
     
     if target > buffer_size:
-        # Calculate how much we need to chunk off
         bulk_amount = target - buffer_size
-        
-        # Use the largest number as many times as possible for the bulk
         count = bulk_amount // max_val
         greedy_counts[max_val] = count
-        
-        # Shrink the target down to just the buffer
         target -= (count * max_val)
         
-    # 2. THE DP REMAINDER
-    # Now we run the perfect memory-heavy DP algorithm, but ONLY on the tiny remainder
+    # 3. THE DP REMAINDER
     dp = [None] * (target + 1)
     dp[0] = {}
     
@@ -57,15 +53,26 @@ def find_exact_sum(target, available_values):
                 if dp[i] is None or sum(current_combo.values()) < sum(dp[i].values()):
                     dp[i] = current_combo
                     
-    # 3. COMBINE RESULTS
+    # 4. COMBINE RESULTS
     if dp[target] is None:
-        return None # It is mathematically impossible with these numbers
+        return None 
         
     final_solution = dp[target]
     for val, count in greedy_counts.items():
         final_solution[val] = final_solution.get(val, 0) + count
         
-    return final_solution
+    detailed_solution = []
+    
+    for val, count in final_solution.items():
+        code_name = value_to_code[val]
+        
+        detailed_solution.append({
+            'Codigo': code_name,
+            'Recuento': count,
+            'Valor': val
+        })
+        
+    return detailed_solution
 
 def normalize_val(val):
     if pd.isna(val) or val == "":
@@ -110,12 +117,19 @@ def process_file(file):
 
 
     result = pd.merge(counts, mapping_lookup, on='Valor', how='left')
-    sum_empty = result.loc[result['Codigo'].isna(), 'Valor'].astype(int).sum()
+    
+    # Create a mask for the missing codes to make the code easier to read
+    missing_codes = result['Codigo'].isna()
+
+    # Multiply the two columns together, then sum the result
+    sum_empty = (result.loc[missing_codes, 'Valor'].astype(int) * result.loc[missing_codes, 'Recuento'].astype(int)).sum()
+    
     result['Codigo'] = result['Codigo'].fillna('-')
     list_of_values = result.loc[result['Codigo'] != '-', 'Valor']
+    list_of_codes = result.loc[result['Codigo'] != '-', 'Codigo']
     result = result[['Valor', 'Codigo', 'Recuento']]
     
-    solution = find_exact_sum(sum_empty, list_of_values)
+    solution = find_exact_sum(sum_empty, list_of_values, list_of_codes)
 
     #############
     valor_numeric = pd.to_numeric(result['Valor'], errors='coerce').fillna(0)
@@ -142,8 +156,13 @@ def process_file(file):
     result = pd.concat([result, new_row], ignore_index=True)
     result = pd.concat([result, sum_new_row], ignore_index=True)
     
-    new_rows = pd.DataFrame(list(solution.items()), columns=['Codigo', 'Recuento'])
-    result = pd.concat([result, new_rows], ignore_index=True)
+    if solution is not None:
+        # Pandas automatically reads the dictionary keys as column names!
+        new_rows = pd.DataFrame(solution)
+        # Append the new rows to your existing DataFrame
+        result = pd.concat([result, new_rows], ignore_index=True)
+    #new_rows = pd.DataFrame(list(solution.items()), columns=['Codigo', 'Recuento'])
+    #result = pd.concat([result, new_rows], ignore_index=True)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
