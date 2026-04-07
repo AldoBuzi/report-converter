@@ -7,9 +7,23 @@ import io
 
 
 def find_exact_sum(target, available_values):
-    target = int(target)
+    # Safely convert the target to an integer
+    target = int(float(target))
+    
+    # Safely clean and convert available values
+    clean_values = set()
+    for v in available_values:
+        try:
+            # Convert to float first (to handle strings like "5.0"), then to int
+            num = int(float(v))
+            if num > 0:
+                clean_values.add(num)
+        except (ValueError, TypeError):
+            # If the value is text, NaN, or completely invalid, just skip it
+            continue
+            
     # Sort descending: trying the biggest chunks first is much faster
-    available_values = sorted(set(int(v) for v in available_values if v > 0), reverse=True)
+    available_values = sorted(clean_values, reverse=True)
     
     best_solution = None
     min_coins = float('inf')
@@ -30,9 +44,7 @@ def find_exact_sum(target, available_values):
         
         val = available_values[current_index]
         
-        # MATHEMATICAL PRUNING (This makes it extremely fast):
-        # If even using the current largest value for the rest of the sum 
-        # results in more items than a solution we already found, stop looking here.
+        # MATHEMATICAL PRUNING
         if current_coin_count + (remaining // val) >= min_coins:
             return
 
@@ -45,10 +57,8 @@ def find_exact_sum(target, available_values):
                 if val in current_combo:
                     del current_combo[val]
             
-            # Move to the next number
             backtrack(remaining - (count * val), current_index + 1, current_combo, current_coin_count + count)
             
-            # Clean up the dictionary for the next loop iteration
             if val in current_combo:
                 del current_combo[val]
 
