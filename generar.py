@@ -7,29 +7,54 @@ import io
 
 
 def find_exact_sum(target, available_values):
-    # Ensure target is an integer
     target = int(target)
+    # Sort descending: trying the biggest chunks first is much faster
+    available_values = sorted(set(int(v) for v in available_values if v > 0), reverse=True)
     
-    # dp[i] will store a dictionary of how many times each value is used to reach the sum 'i'
-    # We initialize it with None, except for 0, which requires an empty dictionary.
-    dp = [None] * (target + 1)
-    dp[0] = {}
+    best_solution = None
+    min_coins = float('inf')
 
-    for i in range(1, target + 1):
-        for v in available_values:
-            # Check if we can use this value (v) to reach the current sum (i)
-            if i - v >= 0 and dp[i - v] is not None:
-                
-                # Copy the combination used to reach the previous step
-                current_combo = dp[i - v].copy()
-                # Add the current value to the count
-                current_combo[v] = current_combo.get(v, 0) + 1
-                
-                # If we haven't found a way to reach 'i' yet, or if this new way uses fewer total numbers, save it
-                if dp[i] is None or sum(current_combo.values()) < sum(dp[i].values()):
-                    dp[i] = current_combo
+    def backtrack(remaining, current_index, current_combo, current_coin_count):
+        nonlocal best_solution, min_coins
+        
+        # If we hit exactly 0, we found a valid combination
+        if remaining == 0:
+            if current_coin_count < min_coins:
+                min_coins = current_coin_count
+                best_solution = current_combo.copy()
+            return
+        
+        # If we run out of values to try, stop
+        if current_index >= len(available_values):
+            return
+        
+        val = available_values[current_index]
+        
+        # MATHEMATICAL PRUNING (This makes it extremely fast):
+        # If even using the current largest value for the rest of the sum 
+        # results in more items than a solution we already found, stop looking here.
+        if current_coin_count + (remaining // val) >= min_coins:
+            return
 
-    return dp[target]
+        # Try using the maximum possible amount of the current value, down to 0
+        max_amount = remaining // val
+        for count in range(max_amount, -1, -1):
+            if count > 0:
+                current_combo[val] = count
+            else:
+                if val in current_combo:
+                    del current_combo[val]
+            
+            # Move to the next number
+            backtrack(remaining - (count * val), current_index + 1, current_combo, current_coin_count + count)
+            
+            # Clean up the dictionary for the next loop iteration
+            if val in current_combo:
+                del current_combo[val]
+
+    # Start the calculation
+    backtrack(target, 0, {}, 0)
+    return best_solution
 
 
 def normalize_val(val):
